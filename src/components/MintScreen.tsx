@@ -104,23 +104,35 @@ export const MintScreen: React.FC<MintScreenProps> = ({
   const capturePristineTicket = useCallback(async () => {
     if (!paperElementRef.current) return;
     try {
+      // Ensure browser rendering and any image decode is settled
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 60));
+
       const dataUrl = await toPng(paperElementRef.current, {
         pixelRatio: 3,
-        cacheBust: true,
+        // Crucial: Must be false so data: URLs (such as user-uploaded images) are not corrupted with query params
+        cacheBust: false,
         backgroundColor: '#FFFDF9',
+        filter: (node) => {
+          if (node instanceof HTMLElement && node.classList.contains('no-export')) {
+            return false;
+          }
+          return true;
+        },
       });
       setCapturedImageUrl(dataUrl);
 
       // Save ticket to state & parent
       const savedTicket: SliceTicket = {
         ...currentTicket,
+        photoUrl,
         imageData: dataUrl,
       };
       onTicketMinted(savedTicket);
     } catch (err) {
       console.error('Failed to capture ticket:', err);
     }
-  }, [currentTicket, onTicketMinted]);
+  }, [currentTicket, photoUrl, onTicketMinted]);
 
   // Execute tear off
   const executeTear = useCallback(() => {
