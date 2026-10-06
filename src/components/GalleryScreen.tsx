@@ -11,11 +11,11 @@ import {
   Flame,
   Layers,
   Download,
-  Eye,
   Trash2,
   Sparkles,
   Share2,
-  FileImage,
+  X,
+  Check,
 } from 'lucide-react';
 
 interface GalleryScreenProps {
@@ -35,11 +35,12 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [isExportingCollage, setIsExportingCollage] = useState(false);
   const [collageImageUrl, setCollageImageUrl] = useState<string | null>(null);
+  const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
   const collageRef = useRef<HTMLDivElement | null>(null);
 
   const totalSlices = tickets.reduce((acc, t) => acc + (t.completedCount || 0), 0);
-
-  // Filter or group by month
   const currentMonthLabel = '2026年10月';
 
   const handleOpenTicket = (ticket: SliceTicket) => {
@@ -53,13 +54,23 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
     setIsExportingCollage(true);
 
     try {
-      const dataUrl = await toPng(collageRef.current, {
-        pixelRatio: 2.5,
-        backgroundColor: '#F7F5F0',
-      });
-      setCollageImageUrl(dataUrl);
+      // Ensure layout repaint and fonts/images are decoded
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 120));
 
-      // Auto download collage
+      const node = collageRef.current;
+      const dataUrl = await toPng(node, {
+        pixelRatio: 2,
+        cacheBust: false,
+        backgroundColor: '#F7F5F0',
+        width: 680,
+        height: node.offsetHeight,
+      });
+
+      setCollageImageUrl(dataUrl);
+      setIsCollageModalOpen(true);
+
+      // Trigger automatic download
       const link = document.createElement('a');
       link.download = `Slice-Collage-${currentMonthLabel}.png`;
       link.href = dataUrl;
@@ -70,6 +81,22 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
       console.error('Collage export failed', err);
     } finally {
       setIsExportingCollage(false);
+    }
+  };
+
+  const handleDownloadCollageManual = () => {
+    if (!collageImageUrl) return;
+    try {
+      const link = document.createElement('a');
+      link.download = `Slice-Collage-${currentMonthLabel}.png`;
+      link.href = collageImageUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 2000);
+    } catch (e) {
+      console.error('Download error:', e);
     }
   };
 
@@ -231,54 +258,215 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
         </div>
       )}
 
-      {/* Off-screen Collage Container for High-Res Generation */}
+      {/* Hidden container for crisp DOM rendering of the collage poster.
+          Outer wrapper has fixed positioning and opacity 0 so it stays off the viewport.
+          Inner node (collageRef) MUST have left: 0, top: 0, position: relative so html-to-image
+          draws onto the SVG foreignObject coordinate (0, 0) without blank canvas clipping! */}
       <div
-        ref={collageRef}
-        style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '750px' }}
-        className="bg-[#F7F5F0] p-8 text-[#2A2825]"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          zIndex: -999,
+          pointerEvents: 'none',
+          opacity: 0,
+          overflow: 'hidden',
+          width: '680px',
+        }}
       >
-        <div className="text-center pb-6 border-b border-[#D8D2C5]">
-          <div className="text-xs font-mono tracking-widest text-[#8C8578] uppercase">
-            MONTHLY LIFE SLICES WALL
-          </div>
-          <h1 className="text-2xl font-bold font-serif-vintage mt-1 text-[#2A2825]">
-            生活切片 · {currentMonthLabel} 胶囊墙
-          </h1>
-          <p className="text-xs text-[#6E685E] mt-1 font-serif-vintage italic">
-            收集日常琐碎的微光，拼贴成平凡生活里的诗行
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-5 my-6">
-          {tickets.slice(0, 4).map((t, idx) => (
-            <div
-              key={idx}
-              className="bg-[#FFFDF9] p-4 rounded-xl shadow-md border border-[#E0D9CD]"
-            >
-              <div className="flex justify-between text-xs font-mono text-[#888] mb-2">
-                <span>{t.dateDisplay}</span>
-                <span>{t.ticketNo}</span>
-              </div>
-              {t.imageData ? (
-                <img
-                  src={t.imageData}
-                  alt="ticket"
-                  className="w-full max-h-64 object-contain mx-auto"
-                />
-              ) : (
-                <div className="text-xs font-serif-vintage p-2 text-center text-[#555]">
-                  "{t.quote}"
-                </div>
-              )}
+        <div
+          ref={collageRef}
+          style={{ width: '680px', position: 'relative', left: 0, top: 0 }}
+          className="bg-[#F7F5F0] p-7 text-[#2A2825] font-sans border border-[#E0D9CD]"
+        >
+          {/* Poster Header */}
+          <div className="text-center pb-5 border-b border-[#D8D2C5]">
+            <div className="text-[11px] font-mono tracking-widest text-[#8C8578] uppercase">
+              MONTHLY LIFE SLICES WALL · 生活切片墙
             </div>
-          ))}
-        </div>
+            <h1 className="text-2xl font-bold font-serif-vintage mt-1 text-[#2A2825] tracking-tight">
+              {currentMonthLabel} · 日常微光拼贴
+            </h1>
+            <p className="text-xs text-[#6E685E] mt-1 font-serif-vintage italic">
+              认真生活的每一刻，都在悄悄沉淀成诗
+            </p>
 
-        <div className="pt-4 border-t border-[#D8D2C5] flex justify-between items-center text-xs font-mono text-[#8C8578]">
-          <span>TOTAL MINTED: {tickets.length} TICKETS</span>
-          <span>SLICE (生活切片) · GENERATED IN 2026</span>
+            <div className="flex items-center justify-center gap-4 mt-3 text-[11px] font-mono text-[#777]">
+              <span>已铸造 {tickets.length} 张实体票券</span>
+              <span>·</span>
+              <span>连续打卡 {streakDays} 天</span>
+              <span>·</span>
+              <span>累计 {totalSlices} 项日常习惯</span>
+            </div>
+          </div>
+
+          {/* Slices Cards Grid */}
+          <div className="grid grid-cols-2 gap-4 my-5">
+            {tickets.map((t, idx) => (
+              <div
+                key={idx}
+                className="bg-[#FFFDF9] p-3.5 rounded-xl shadow-xs border border-[#DFD9CD] flex flex-col justify-between"
+              >
+                <div className="flex justify-between items-center text-[10px] font-mono text-[#8C8578] mb-2 border-b border-[#EAE5DB] pb-1.5">
+                  <span className="font-semibold text-[#2A2825]">{t.dateDisplay}</span>
+                  <span className="text-[#C86D51]">{t.ticketNo}</span>
+                </div>
+
+                {t.imageData ? (
+                  <div className="flex justify-center my-1">
+                    <img
+                      src={t.imageData}
+                      alt="Ticket"
+                      className="max-h-56 w-auto object-contain rounded-sm"
+                    />
+                  </div>
+                ) : t.template === 'polaroid' && t.photoUrl ? (
+                  <div className="bg-[#FFFDF9] p-2 border border-[#E5DFD4] rounded-xs shadow-2xs">
+                    <div className="aspect-[3/4] bg-[#EAE6DF] overflow-hidden rounded-[2px] mb-2">
+                      <img
+                        src={t.photoUrl}
+                        alt="Polaroid"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <p className="text-[10px] font-serif-vintage italic text-[#4A453D] text-center line-clamp-2">
+                      "{t.quote}"
+                    </p>
+                  </div>
+                ) : t.template === 'ticket' ? (
+                  <div className="bg-[#F4F1EA] p-3 rounded-lg border border-[#DFD9CE] text-[10px]">
+                    <div className="font-mono text-[#C86D51] font-bold mb-1">
+                      LIFE CINEMA · 人生放映厅
+                    </div>
+                    <div className="font-bold text-xs font-serif-vintage text-[#2A2825] mb-1">
+                      {t.movieTitle || '《认真生活的一天》'}
+                    </div>
+                    <div className="space-y-0.5 text-[#555] my-1">
+                      {t.completedHabits.slice(0, 3).map((h, i) => (
+                        <div key={i} className="truncate">
+                          {h.icon} {h.title}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between font-mono text-[9px] text-[#888] pt-1 border-t border-dashed border-[#CCC]">
+                      <span>座位: {t.seatNumber || 'VIP-01-A'}</span>
+                      <span>100% 心流</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-[#FFFDF9] p-3 rounded-sm border border-[#E2DDD2] font-mono-receipt text-[10px]">
+                    <div className="text-center font-bold text-xs pb-1 border-b border-dashed border-[#DDD]">
+                      生活便利店 · 今日清单
+                    </div>
+                    <div className="space-y-1 my-2">
+                      {t.completedHabits.slice(0, 3).map((h, i) => (
+                        <div key={i} className="flex justify-between">
+                          <span className="truncate pr-1">{h.icon} {h.title}</span>
+                          <span className="text-[#C86D51]">100%</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center pt-1 border-t border-dashed border-[#DDD] text-[9px] text-[#888]">
+                      <span>实付意志力</span>
+                      <span className="font-bold text-[#2A2825]">{t.willpowerPercent}%</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-2 pt-1.5 border-t border-[#F0EBE0] flex justify-between items-center text-[9px] font-mono text-[#999]">
+                  <span>{t.city} · {t.weather}</span>
+                  <span className="stamp-seal text-[7px] px-1 py-0.2 border-[#C86D51] text-[#C86D51]">
+                    MINTED
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Poster Footer */}
+          <div className="pt-4 border-t border-[#D8D2C5] flex justify-between items-center text-[10px] font-mono text-[#8C8578]">
+            <span>SLICE (生活切片) · ARCHIVE COLLECTION 2026</span>
+            <span className="text-[#C86D51] font-bold">★ 平凡日常 · 皆为诗篇 ★</span>
+          </div>
         </div>
       </div>
+
+      {/* Monthly Collage Preview & Long-press Share Modal */}
+      {isCollageModalOpen && collageImageUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md max-h-[92vh] overflow-y-auto bg-[#F7F5F0] rounded-2xl shadow-2xl p-5 flex flex-col items-center">
+            <button
+              onClick={() => setIsCollageModalOpen(false)}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-[#7A7368] hover:text-[#2A2825] hover:bg-black/5"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="text-center mb-3 pt-1">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C86D51] tracking-wide mb-1">
+                <Sparkles size={13} />
+                <span>月度切片墙海报已生成</span>
+              </div>
+              <h2 className="text-base font-bold text-[#2A2825] font-serif-vintage">
+                分享切片墙至 微信朋友圈 / 小红书
+              </h2>
+            </div>
+
+            {/* Poster image preview */}
+            <div className="relative max-h-[58vh] flex justify-center my-1 group">
+              <img
+                src={collageImageUrl}
+                alt="Monthly Collage Wall"
+                className="wechat-save-image max-h-[58vh] w-auto object-contain rounded-md shadow-xl border border-stone-200 select-auto pointer-events-auto"
+                style={{
+                  WebkitTouchCallout: 'default',
+                  touchAction: 'auto',
+                }}
+              />
+
+              {/* Bouncing finger hint */}
+              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-[#2A2825] text-white text-[11px] px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce pointer-events-none whitespace-nowrap">
+                <span className="text-sm">👆</span>
+                <span className="font-medium tracking-wide">长按海报保存至相册</span>
+              </div>
+            </div>
+
+            {/* Hint */}
+            <div className="w-full mt-6 bg-[#EFECE4] rounded-xl p-3 text-center border border-[#E0DACE]">
+              <p className="text-xs text-[#5D574C] leading-relaxed">
+                长按上方海报即可直接「保存图片」或「发送给朋友」。同时已自动尝试下载至本地。
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="w-full mt-4 flex flex-col gap-2">
+              <button
+                onClick={handleDownloadCollageManual}
+                className="w-full py-2.5 px-4 bg-[#FFFDF9] hover:bg-[#F2EFE8] active:scale-[0.98] border border-[#D5CEC2] text-[#2A2825] rounded-xl font-medium text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
+              >
+                {downloadSuccess ? (
+                  <>
+                    <Check size={14} className="text-emerald-600" />
+                    <span className="text-emerald-700 font-bold">已下载到本地！</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    <span>再次下载高清海报 (PNG)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setIsCollageModalOpen(false)}
+                className="w-full py-2.5 px-4 bg-[#2A2825] text-white rounded-xl text-xs font-medium hover:bg-black transition-colors"
+              >
+                关闭预览
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Detailed Inspection Modal */}
       {selectedTicket && (
@@ -288,7 +476,7 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
               onClick={() => setSelectedTicket(null)}
               className="absolute top-4 right-4 p-1.5 rounded-full text-[#7A7368] hover:text-[#2A2825] hover:bg-black/5"
             >
-              ✕
+              <X size={18} />
             </button>
 
             <div className="text-xs font-mono text-[#C86D51] mb-1 font-bold">
