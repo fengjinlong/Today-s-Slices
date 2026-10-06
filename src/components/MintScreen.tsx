@@ -109,8 +109,9 @@ export const MintScreen: React.FC<MintScreenProps> = ({
       await new Promise((r) => setTimeout(r, 60));
 
       const dataUrl = await toPng(paperElementRef.current, {
+        width: 340, // Locks exact 340px width so text and titles NEVER wrap or shrink
         pixelRatio: 3,
-        // Crucial: Must be false so data: URLs (such as user-uploaded images) are not corrupted with query params
+        skipFonts: true, // Prevents SVG font metric recalculation from wrapping text
         cacheBust: false,
         backgroundColor: '#FFFDF9',
         filter: (node) => {
@@ -343,7 +344,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
           }}
         >
           {/* Pristine Paper Content */}
-          <div ref={paperElementRef}>
+          <div ref={paperElementRef} style={{ width: '340px' }} className="w-[340px] max-w-full mx-auto">
             {template === 'receipt' && (
               <ReceiptPaper ticket={currentTicket} showTearEdge={isTorn} />
             )}

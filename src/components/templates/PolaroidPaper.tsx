@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { SliceTicket } from '../../types';
 import { PRESET_POLAROID_PHOTOS } from '../../services/storage';
-import { Camera, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Camera, Image as ImageIcon } from 'lucide-react';
 import { sound } from '../../services/soundEngine';
 
 interface PolaroidPaperProps {
@@ -35,7 +35,6 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
         const rawUrl = event.target?.result as string;
         if (!rawUrl) return;
 
-        // Downsample and normalize image to ensure fast rendering & prevent localStorage quota errors
         const img = new Image();
         img.onload = () => {
           const maxDim = 1200;
@@ -56,7 +55,6 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, w, h);
-            // High-quality JPEG data URL that renders reliably in SVG foreignObject
             const cleanDataUrl = canvas.toDataURL('image/jpeg', 0.92);
             onPhotoChange(cleanDataUrl);
           } else {
@@ -69,7 +67,6 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
         img.src = rawUrl;
       };
       reader.readAsDataURL(file);
-      // Reset input value so same file can be re-selected if desired
       e.target.value = '';
     }
   };
@@ -86,10 +83,12 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
   return (
     <div
       id={id}
-      className="relative w-full max-w-[330px] mx-auto bg-[#FFFDF9] text-[#2A2825] p-4 pb-7 rounded-sm select-none transition-shadow"
+      className="relative w-[340px] max-w-full mx-auto bg-[#FFFDF9] text-[#2A2825] p-4 pb-7 rounded-sm select-none transition-shadow"
       style={{
         boxShadow: '0 14px 40px -10px rgba(42, 40, 37, 0.22), 0 2px 10px -2px rgba(42, 40, 37, 0.08)',
         border: '1px solid rgba(220, 214, 202, 0.6)',
+        width: '340px',
+        boxSizing: 'border-box',
       }}
     >
       {/* Washi masking tape at top */}
@@ -115,23 +114,23 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
         />
 
         {/* Date watermark on bottom right of photo */}
-        <div className="absolute bottom-2.5 right-3 text-[10px] tracking-wider text-amber-100 font-mono drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] pointer-events-none z-10">
+        <div className="absolute bottom-2.5 right-3 text-[10px] tracking-wider text-amber-100 font-mono drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] pointer-events-none z-10 whitespace-nowrap">
           {ticket.dateDisplay}
         </div>
 
-        {/* Interactive Controls Overlay for Desktop Hover and Mobile Tapping */}
+        {/* Interactive Controls Overlay for Desktop Hover */}
         {interactive && (
           <div className="no-export absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-3 text-white z-20">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-stone-900 rounded-md text-xs font-medium shadow-md hover:bg-stone-100 active:scale-95 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-stone-900 rounded-md text-xs font-medium shadow-md hover:bg-stone-100 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
             >
               <Camera size={14} className="text-[#C86D51]" />
               上传/拍摄照片
             </button>
             <button
               onClick={cyclePresetPhoto}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-black/70 text-white border border-white/30 rounded-md text-xs font-medium shadow-md hover:bg-black/90 active:scale-95 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-black/70 text-white border border-white/30 rounded-md text-xs font-medium shadow-md hover:bg-black/90 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
             >
               <ImageIcon size={14} />
               切换预设生活图
@@ -139,7 +138,7 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
           </div>
         )}
 
-        {/* Mobile Quick Action Pill (Always visible button on bottom-left for easy touch discovery) */}
+        {/* Mobile Quick Action Pill */}
         {interactive && (
           <button
             type="button"
@@ -147,7 +146,7 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
               e.stopPropagation();
               fileInputRef.current?.click();
             }}
-            className="no-export absolute bottom-2 left-2 z-20 bg-black/60 hover:bg-black/80 backdrop-blur-xs text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer"
+            className="no-export absolute bottom-2 left-2 z-20 bg-black/60 hover:bg-black/80 backdrop-blur-xs text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap"
           >
             <Camera size={11} className="text-[#E8A590]" />
             <span>更换照片</span>
@@ -171,22 +170,22 @@ export const PolaroidPaper: React.FC<PolaroidPaperProps> = ({
         </p>
 
         {/* Completed items bullet summary */}
-        <div className="mt-3 pt-2.5 border-t border-[#EAE5DC] flex items-center justify-between text-[11px] text-[#6E685F] font-mono-receipt">
-          <div className="flex items-center gap-1.5">
+        <div className="mt-3 pt-2.5 border-t border-[#EAE5DC] flex items-center justify-between text-[11px] text-[#6E685F] font-mono-receipt whitespace-nowrap">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
             <span className="text-xs">✦</span>
-            <span>{ticket.city} · {ticket.weather}</span>
+            <span className="whitespace-nowrap">{ticket.city} · {ticket.weather}</span>
           </div>
-          <div className="text-[10px] text-[#8C857A]">
+          <div className="text-[10px] text-[#8C8578] whitespace-nowrap">
             已完成 {ticket.completedCount}/{ticket.allHabitsCount} 切片
           </div>
         </div>
 
         {/* Stamp seal in bottom right corner */}
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-[9px] font-mono tracking-widest text-[#9C958A]">
+          <div className="text-[9px] font-mono tracking-widest text-[#9C958A] whitespace-nowrap">
             {ticket.ticketNo} · SLICE POLA
           </div>
-          <div className="stamp-seal-circle text-[10px] text-[#C86D51] border-[#C86D51] px-2 py-0.5 font-bold">
+          <div className="stamp-seal-circle text-[10px] text-[#C86D51] border-[#C86D51] px-2 py-0.5 font-bold whitespace-nowrap">
             LIFE CAPTURE
           </div>
         </div>
