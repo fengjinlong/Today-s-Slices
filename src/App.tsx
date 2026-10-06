@@ -8,17 +8,63 @@ import {
   getSettings,
 } from './services/storage';
 import { sound } from './services/soundEngine';
+import { detectLocationAndWeather } from './services/weatherService';
 import { TodayScreen } from './components/TodayScreen';
 import { MintScreen } from './components/MintScreen';
 import { GalleryScreen } from './components/GalleryScreen';
+import { CityWeatherModal } from './components/CityWeatherModal';
 import { Sparkles, Calendar, Scissors, Layers, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('today');
   const [habits, setHabits] = useState<HabitItem[]>(() => getStoredHabits());
   const [tickets, setTickets] = useState<SliceTicket[]>(() => getStoredTickets());
-  const [settings] = useState(() => getSettings());
+  const [settings, setSettings] = useState(() => getSettings());
+  const [city, setCity] = useState(settings.city || '上海');
+  const [weather, setWeather] = useState(settings.weather || '21°C 晴');
+  const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Silently auto-detect rough city & real-time weather from IP/TimeZone & Open-Meteo on startup
+  useEffect(() => {
+    let isCurrent = true;
+    detectLocationAndWeather()
+      .then((res) => {
+        if (!isCurrent) return;
+        setCity(res.city);
+        setWeather(res.weather);
+        const updated = { ...settings, city: res.city, weather: res.weather };
+        setSettings(updated);
+        try {
+          localStorage.setItem('slice_settings_v1', JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {
+        // fallback to default
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  const handleUpdateCityWeather = (newCity: string, newWeather: string) => {
+    setCity(newCity);
+    setWeather(newWeather);
+    const updated = { ...settings, city: newCity, weather: newWeather };
+    setSettings(updated);
+    try {
+      localStorage.setItem('slice_settings_v1', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+    setToastMessage(`📍 已切换至 ${newCity} · ${newWeather}`);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
+  };
 
   // Sync habits to localStorage
   const handleUpdateHabits = (newHabits: HabitItem[]) => {
@@ -29,7 +75,6 @@ export default function App() {
   // When a ticket is minted
   const handleTicketMinted = (newTicket: SliceTicket) => {
     setTickets((prev) => {
-      // Avoid duplicate id if re-minted
       const exists = prev.some((t) => t.id === newTicket.id);
       const updated = exists
         ? prev.map((t) => (t.id === newTicket.id ? newTicket : t))
@@ -81,10 +126,17 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-mono text-[#7C7569]">
+          {/* Quick city tag in header */}
+          <button
+            onClick={() => setIsWeatherModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-mono text-[#7C7569] hover:text-[#2A2825] bg-[#ECE7DC]/70 hover:bg-[#ECE7DC] px-2.5 py-1 rounded-full transition-all cursor-pointer"
+            title="点击设置城市与天气"
+          >
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>24H MART</span>
-          </div>
+            <span>{city}</span>
+            <span>·</span>
+            <span>{weather}</span>
+          </button>
         </header>
 
         {/* Dynamic Toast Notification */}
@@ -102,18 +154,19 @@ export default function App() {
           {activeTab === 'today' && (
             <TodayScreen
               habits={habits}
-              city={settings.city}
-              weather={settings.weather}
+              city={city}
+              weather={weather}
               onUpdateHabits={handleUpdateHabits}
               onOpenMint={() => switchTab('mint')}
+              onOpenWeatherModal={() => setIsWeatherModalOpen(true)}
             />
           )}
 
           {activeTab === 'mint' && (
             <MintScreen
               habits={habits}
-              city={settings.city}
-              weather={settings.weather}
+              city={city}
+              weather={weather}
               onTicketMinted={handleTicketMinted}
               onGoToGallery={() => switchTab('gallery')}
             />
@@ -134,7 +187,7 @@ export default function App() {
           {/* Tab 1: Today's Slices */}
           <button
             onClick={() => switchTab('today')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 transition-colors ${
+            className={`flex flex-col items-center gap-1 py-1 px-3 transition-colors cursor-pointer ${
               activeTab === 'today'
                 ? 'text-[#2A2825] font-bold'
                 : 'text-[#968E82] hover:text-[#5C564D]'
@@ -147,7 +200,7 @@ export default function App() {
           {/* Tab 2: Mint & Tear (Highlighted Center Button) */}
           <button
             onClick={() => switchTab('mint')}
-            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all ${
+            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all cursor-pointer ${
               activeTab === 'mint'
                 ? 'bg-[#2A2825] text-[#FFFDF9] shadow-md scale-105'
                 : 'text-[#5C564D] hover:bg-[#F2EEE4]'
@@ -165,7 +218,7 @@ export default function App() {
           {/* Tab 3: Gallery Album */}
           <button
             onClick={() => switchTab('gallery')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 transition-colors ${
+            className={`flex flex-col items-center gap-1 py-1 px-3 transition-colors cursor-pointer ${
               activeTab === 'gallery'
                 ? 'text-[#2A2825] font-bold'
                 : 'text-[#968E82] hover:text-[#5C564D]'
@@ -175,6 +228,15 @@ export default function App() {
             <span className="text-[11px] tracking-tight">记忆票夹</span>
           </button>
         </nav>
+
+        {/* Location & Real-time Weather Switcher Modal */}
+        <CityWeatherModal
+          isOpen={isWeatherModalOpen}
+          onClose={() => setIsWeatherModalOpen(false)}
+          currentCity={city}
+          currentWeather={weather}
+          onUpdateCityWeather={handleUpdateCityWeather}
+        />
       </main>
     </div>
   );

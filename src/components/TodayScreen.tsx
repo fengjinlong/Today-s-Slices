@@ -10,6 +10,7 @@ interface TodayScreenProps {
   weather: string;
   onUpdateHabits: (habits: HabitItem[]) => void;
   onOpenMint: () => void;
+  onOpenWeatherModal: () => void;
 }
 
 export const TodayScreen: React.FC<TodayScreenProps> = ({
@@ -18,6 +19,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   weather,
   onUpdateHabits,
   onOpenMint,
+  onOpenWeatherModal,
 }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -87,17 +89,26 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <div>
         {/* Header Section */}
         <div className="bg-[#FFFDF9] rounded-2xl p-4 sm:p-5 border border-[#E8E2D7] shadow-xs mb-4">
-          {/* Top Location & Weather */}
+          {/* Top Location & Weather (Interactive Button to change city & weather) */}
           <div className="flex items-center justify-between text-xs text-[#7C7569] mb-2 font-mono-receipt">
-            <div className="flex items-center gap-1.5">
-              <MapPin size={13} className="text-[#C86D51]" />
-              <span className="font-medium text-[#2A2825]">{city}</span>
+            <button
+              onClick={onOpenWeatherModal}
+              className="flex items-center gap-1.5 px-2 py-0.5 -ml-2 rounded-lg hover:bg-stone-100 active:scale-95 transition-all cursor-pointer text-left group"
+              title="点击切换城市或实时定位天气"
+            >
+              <MapPin size={13} className="text-[#C86D51] group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-[#2A2825] underline decoration-stone-300 decoration-dashed underline-offset-3">
+                {city}
+              </span>
               <span className="text-[#C0B9AC]">·</span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1 text-[#555]">
                 <Sun size={12} className="text-amber-500" />
                 {weather}
               </span>
-            </div>
+              <span className="text-[10px] text-[#A0988A] group-hover:text-[#C86D51] transition-colors ml-0.5">
+                ✎
+              </span>
+            </button>
             <div className="text-[11px] text-[#A0988A]">
               SLICES TRACKER
             </div>
@@ -147,7 +158,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1 text-xs text-[#C86D51] hover:text-[#AC593E] font-medium py-1 px-2 rounded-lg hover:bg-[#C86D51]/10 transition-colors"
+            className="flex items-center gap-1 text-xs text-[#C86D51] hover:text-[#AC593E] font-medium py-1 px-2 rounded-lg hover:bg-[#C86D51]/10 transition-colors cursor-pointer"
           >
             <Plus size={14} />
             <span>新增切片</span>
@@ -247,7 +258,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                   {/* Remove option on hover/mobile */}
                   <button
                     onClick={(e) => removeHabit(habit.id, e)}
-                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 text-[#9E978C] hover:text-red-600 p-1 rounded-md transition-opacity"
+                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 text-[#9E978C] hover:text-red-600 p-1 rounded-md transition-opacity cursor-pointer"
                     title="删除"
                   >
                     ×
@@ -263,7 +274,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <div className="w-full max-w-md mx-auto pt-6">
         <button
           onClick={onOpenMint}
-          className="w-full py-3.5 px-5 bg-[#2A2825] hover:bg-[#1E1C1A] active:scale-[0.98] text-[#FFFDF9] rounded-2xl shadow-lg hover:shadow-xl font-medium text-sm flex items-center justify-between transition-all group"
+          className="w-full py-3.5 px-5 bg-[#2A2825] hover:bg-[#1E1C1A] active:scale-[0.98] text-[#FFFDF9] rounded-2xl shadow-lg hover:shadow-xl font-medium text-sm flex items-center justify-between transition-all group cursor-pointer"
         >
           <div className="flex items-center gap-2">
             <span className="p-1.5 bg-[#C86D51] text-white rounded-lg">
