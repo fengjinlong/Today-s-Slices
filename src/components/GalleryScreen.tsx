@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { SliceTicket } from '../types';
 import { sound } from '../services/soundEngine';
 import { ReceiptPaper } from './templates/ReceiptPaper';
 import { PolaroidPaper } from './templates/PolaroidPaper';
 import { TicketStubPaper } from './templates/TicketStubPaper';
 import { ShareModal } from './ShareModal';
-import { toPng } from 'html-to-image';
+import { generateMonthlyPoster } from '../services/posterCanvas';
 import {
   Calendar,
   Flame,
@@ -16,8 +16,6 @@ import {
   Share2,
   X,
   Check,
-  RefreshCw,
-  Eye,
 } from 'lucide-react';
 
 interface GalleryScreenProps {
@@ -40,9 +38,6 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  // Ref to the live visible poster element inside the modal
-  const posterRef = useRef<HTMLDivElement | null>(null);
-
   const totalSlices = tickets.reduce((acc, t) => acc + (t.completedCount || 0), 0);
   const currentMonthLabel = '2026年10月';
 
@@ -51,58 +46,40 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
     setSelectedTicket(ticket);
   };
 
-  // Open the collage modal and trigger mobile-safe capture
-  const handleOpenCollage = () => {
+  // 100% Deterministic Canvas 2D Poster Generator
+  const handleExportCollage = async () => {
     sound.playStampThud();
-    setCollageImageUrl(null);
-    setIsCollageModalOpen(true);
     setIsExportingCollage(true);
-  };
+    setIsCollageModalOpen(true);
 
-  // When modal is open and poster element is mounted & visible in viewport, capture it safely
-  useEffect(() => {
-    if (!isCollageModalOpen || !posterRef.current) return;
+    try {
+      // Generate pristine 2D canvas poster (zero SVG bugs, zero mobile culling)
+      const dataUrl = await generateMonthlyPoster(
+        tickets,
+        streakDays,
+        currentMonthLabel,
+        totalSlices
+      );
 
-    let isMounted = true;
-    const generateImage = async () => {
+      setCollageImageUrl(dataUrl);
+
+      // Auto trigger download
       try {
-        // Wait 2 animation frames + 150ms to ensure the mobile browser has fully painted fonts and layout
-        await new Promise((r) => requestAnimationFrame(r));
-        await new Promise((r) => setTimeout(r, 180));
-
-        if (!posterRef.current || !isMounted) return;
-
-        // Mobile-safe capture with optimal dimensions (350px * 2 = 700px width)
-        const dataUrl = await toPng(posterRef.current, {
-          pixelRatio: 2,
-          cacheBust: false,
-          backgroundColor: '#F7F5F0',
-          filter: (node) => {
-            if (node instanceof HTMLElement && node.classList.contains('no-export')) {
-              return false;
-            }
-            return true;
-          },
-        });
-
-        if (isMounted) {
-          setCollageImageUrl(dataUrl);
-          setIsExportingCollage(false);
-        }
-      } catch (err) {
-        console.error('Mobile collage capture failed:', err);
-        if (isMounted) {
-          setIsExportingCollage(false);
-        }
+        const link = document.createElement('a');
+        link.download = `Slice-Collage-${currentMonthLabel}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch {
+        // Fallback handled by UI download button
       }
-    };
-
-    generateImage();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isCollageModalOpen]);
+    } catch (err) {
+      console.error('Collage generation error:', err);
+    } finally {
+      setIsExportingCollage(false);
+    }
+  };
 
   const handleDownloadCollageManual = () => {
     if (!collageImageUrl) return;
@@ -119,9 +96,6 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
       console.error('Download error:', e);
     }
   };
-
-  // Select up to 4 featured tickets for the monthly collage
-  const collageTickets = tickets.slice(0, 4);
 
   return (
     <div className="relative min-h-[calc(100vh-68px)] px-4 pt-4 pb-28">
@@ -267,16 +241,19 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
       {tickets.length > 0 && (
         <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto px-4 pointer-events-none z-30">
           <button
-            onClick={handleOpenCollage}
+            onClick={handleExportCollage}
+            disabled={isExportingCollage}
             className="pointer-events-auto w-full py-3.5 px-4 bg-[#2A2825] hover:bg-[#1E1C1A] active:scale-[0.98] text-[#FFFDF9] rounded-2xl shadow-xl font-medium text-xs flex items-center justify-center gap-2 transition-all border border-[#484541] cursor-pointer"
           >
             <Sparkles size={15} className="text-[#C86D51]" />
-            <span>导出月度切片墙 (Export Monthly Collage)</span>
+            <span>
+              {isExportingCollage ? '正在生成海报...' : '导出月度切片墙 (Export Monthly Collage)'}
+            </span>
           </button>
         </div>
       )}
 
-      {/* Monthly Collage Modal (Mobile-First, Visible Render Architecture) */}
+      {/* Monthly Collage Modal (100% Reliable Base64 Image Preview) */}
       {isCollageModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md max-h-[94vh] overflow-y-auto bg-[#F7F5F0] rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col items-center">
@@ -299,11 +276,9 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
               </h2>
             </div>
 
-            {/* Main Stage: If image is generated, show WeChat-saveable image;
-                Otherwise show the live rendered DOM poster so the mobile engine paints every pixel */}
+            {/* Poster Preview */}
             <div className="relative w-full flex flex-col items-center my-1 group">
               {collageImageUrl ? (
-                /* WeChat Long-Press Saveable Image */
                 <div className="relative max-h-[60vh] flex justify-center">
                   <img
                     src={collageImageUrl}
@@ -322,167 +297,22 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
                   </div>
                 </div>
               ) : (
-                /* Generating status + live DOM poster */
-                <div className="w-full flex flex-col items-center">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs text-[#7A7368] font-mono">
-                    <div className="w-3.5 h-3.5 border-2 border-stone-400 border-t-[#C86D51] rounded-full animate-spin" />
-                    <span>正在生成高清海报，请稍候...</span>
-                  </div>
+                <div className="w-64 h-80 flex flex-col items-center justify-center bg-stone-100 rounded-lg text-stone-400 text-xs gap-2">
+                  <div className="w-6 h-6 border-2 border-stone-300 border-t-[#C86D51] rounded-full animate-spin" />
+                  <span>正在合成月度切片海报...</span>
                 </div>
               )}
-
-              {/* The Mobile-Calibrated Poster DOM Element (Always rendered in DOM for capture, width 340px) */}
-              <div
-                className={`w-full flex justify-center ${
-                  collageImageUrl ? 'absolute opacity-0 pointer-events-none' : 'relative opacity-100'
-                }`}
-              >
-                <div
-                  ref={posterRef}
-                  style={{ width: '340px' }}
-                  className="bg-[#F7F5F0] p-4 text-[#2A2825] font-sans border border-[#DFD9CD] rounded-xl shadow-md select-none mx-auto"
-                >
-                  {/* Poster Header */}
-                  <div className="text-center pb-3 border-b border-[#D8D2C5]">
-                    <div className="text-[9px] font-mono tracking-widest text-[#8C8578] uppercase">
-                      MONTHLY LIFE SLICES WALL
-                    </div>
-                    <h1 className="text-lg font-bold font-serif-vintage mt-0.5 text-[#2A2825] tracking-tight">
-                      {currentMonthLabel} · 日常微光拼贴
-                    </h1>
-                    <p className="text-[10px] font-serif-vintage italic text-[#6E685E] mt-0.5">
-                      认真生活的每一刻，都在悄悄沉淀成诗
-                    </p>
-
-                    <div className="flex items-center justify-center gap-2 mt-2 text-[10px] font-mono text-[#777] bg-[#EFECE5] py-1 px-2 rounded-lg">
-                      <span>{tickets.length} 张票券</span>
-                      <span>·</span>
-                      <span>连续 {streakDays} 天</span>
-                      <span>·</span>
-                      <span>达成 {totalSlices} 项</span>
-                    </div>
-                  </div>
-
-                  {/* 2x2 Grid of Slice Cards */}
-                  <div className="grid grid-cols-2 gap-2.5 my-3">
-                    {collageTickets.map((t, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-[#FFFDF9] p-2.5 rounded-lg border border-[#DFD9CD] shadow-2xs flex flex-col justify-between"
-                      >
-                        {/* Date & No */}
-                        <div className="flex justify-between items-center text-[9px] font-mono text-[#8C8578] mb-1.5 border-b border-[#EAE5DB] pb-1">
-                          <span className="font-semibold text-[#2A2825]">{t.dateDisplay}</span>
-                          <span className="text-[#C86D51] font-bold">{t.ticketNo}</span>
-                        </div>
-
-                        {/* Card Content Thumbnail */}
-                        {t.imageData ? (
-                          <div className="h-28 flex items-center justify-center my-0.5 overflow-hidden rounded-[2px]">
-                            <img
-                              src={t.imageData}
-                              alt="Ticket"
-                              className="max-h-28 w-auto object-contain"
-                            />
-                          </div>
-                        ) : t.template === 'polaroid' && t.photoUrl ? (
-                          <div className="bg-[#FFFDF9] p-1 border border-[#E5DFD4] rounded-xs shadow-2xs">
-                            <div className="h-20 bg-[#EAE6DF] overflow-hidden rounded-[2px] mb-1">
-                              <img
-                                src={t.photoUrl}
-                                alt="Polaroid"
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <p className="text-[8px] font-serif-vintage italic text-[#4A453D] text-center truncate">
-                              "{t.quote}"
-                            </p>
-                          </div>
-                        ) : t.template === 'ticket' ? (
-                          <div className="bg-[#F4F1EA] p-2 rounded-md border border-[#DFD9CE] text-[9px] min-h-[90px] flex flex-col justify-between">
-                            <div>
-                              <div className="font-mono text-[#C86D51] font-bold text-[8px]">
-                                LIFE CINEMA
-                              </div>
-                              <div className="font-bold text-[10px] font-serif-vintage text-[#2A2825] truncate">
-                                {t.movieTitle || '《认真生活的一天》'}
-                              </div>
-                              <div className="space-y-0.5 text-[#555] my-1 text-[8px]">
-                                {t.completedHabits.slice(0, 2).map((h, i) => (
-                                  <div key={i} className="truncate">
-                                    {h.icon} {h.title}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="flex justify-between font-mono text-[8px] text-[#888] pt-1 border-t border-dashed border-[#CCC]">
-                              <span>{t.seatNumber || 'VIP-01-A'}</span>
-                              <span className="text-[#C86D51]">ADMIT 1</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-[#FFFDF9] p-2 rounded-sm border border-[#E2DDD2] font-mono-receipt text-[9px] min-h-[90px] flex flex-col justify-between">
-                            <div>
-                              <div className="text-center font-bold text-[9px] pb-0.5 border-b border-dashed border-[#DDD]">
-                                生活便利店清单
-                              </div>
-                              <div className="space-y-0.5 my-1 text-[8px]">
-                                {t.completedHabits.slice(0, 2).map((h, i) => (
-                                  <div key={i} className="flex justify-between">
-                                    <span className="truncate pr-1">{h.icon} {h.title}</span>
-                                    <span className="text-[#C86D51]">100%</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="flex justify-between items-center pt-0.5 border-t border-dashed border-[#DDD] text-[8px] text-[#888]">
-                              <span>实付意志力</span>
-                              <span className="font-bold text-[#2A2825]">{t.willpowerPercent}%</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Footer stamp */}
-                        <div className="mt-1.5 pt-1 border-t border-[#F0EBE0] flex justify-between items-center text-[8px] font-mono text-[#999]">
-                          <span>{t.city}</span>
-                          <span className="stamp-seal text-[6px] px-1 border-[#C86D51] text-[#C86D51]">
-                            MINTED
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Synthetic Barcode & Poster Footer */}
-                  <div className="pt-2.5 border-t border-[#D8D2C5] flex flex-col items-center">
-                    <div className="flex items-center justify-center gap-[2px] h-6 mb-1 px-4 overflow-hidden w-full">
-                      {Array.from({ length: 32 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`h-full ${
-                            i % 4 === 0 ? 'w-[2px] bg-[#2A2825]' : 'w-[1px] bg-[#2A2825]'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <div className="flex justify-between items-center w-full text-[8px] font-mono text-[#8C8578]">
-                      <span>SLICE ARCHIVE #2026</span>
-                      <span className="text-[#C86D51] font-bold">★ 平凡日常 皆为诗篇 ★</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Hint Notice */}
-            <div className="w-full mt-5 bg-[#EFECE4] rounded-xl p-3 text-center border border-[#E0DACE]">
+            <div className="w-full mt-6 bg-[#EFECE4] rounded-xl p-3 text-center border border-[#E0DACE]">
               <p className="text-xs text-[#5D574C] leading-relaxed">
-                已优化手机端专属比例。长按上方海报即可直接「保存到手机相册」或「发送给好友」。
+                长按上方海报即可直接「保存到手机相册」或「发送给微信好友」。
               </p>
             </div>
 
             {/* Action Buttons */}
-            <div className="w-full mt-3.5 flex flex-col gap-2">
+            <div className="w-full mt-4 flex flex-col gap-2">
               <button
                 onClick={handleDownloadCollageManual}
                 disabled={!collageImageUrl}
