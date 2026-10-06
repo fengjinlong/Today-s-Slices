@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #F7F5F0;
+    color: #2A2825;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    touch-action: pan-y;
+    overflow-x: hidden;
+  }
+}
+
+.font-mono-receipt {
+  font-family: 'Space Mono', 'JetBrains Mono', Courier, monospace;
+}
+
+.font-serif-vintage {
+  font-family: 'Noto Serif SC', Georgia, 'Songti SC', serif;
+}
+
+/* Authentic Paper Grain & Jagged/Zigzag Edges */
+.receipt-zigzag-bottom {
+  background-image: 
+    linear-gradient(135deg, transparent 6px, #FFFDF9 6px),
+    linear-gradient(225deg, transparent 6px, #FFFDF9 6px);
+  background-position: 0 bottom, 0 bottom;
+  background-size: 16px 12px;
+  background-repeat: repeat-x;
+}
+
+.receipt-zigzag-top {
+  background-image: 
+    linear-gradient(45deg, transparent 6px, #FFFDF9 6px),
+    linear-gradient(315deg, transparent 6px, #FFFDF9 6px);
+  background-position: 0 top, 0 top;
+  background-size: 16px 12px;
+  background-repeat: repeat-x;
+}
+
+/* Rubber Stamp Styling */
+.stamp-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #C86D51;
+  border: 2.5px solid #C86D51;
+  border-radius: 4px;
+  mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0.7) 100%);
+  transform: rotate(-10deg);
+  box-shadow: 0 0 0 1px rgba(200, 109, 81, 0.2);
+}
+
+.stamp-seal-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #C86D51;
+  border: 2px dashed #C86D51;
+  border-radius: 9999px;
+  transform: rotate(-6deg);
+}
+
+/* Perforated Line */
+.perforated-line {
+  background-image: linear-gradient(to right, #B4AEA4 40%, rgba(255,255,255,0) 0%);
+  background-position: top;
+  background-size: 8px 1.5px;
+  background-repeat: repeat-x;
+  height: 1.5px;
+}
+
+.perforated-vertical-line {
+  background-image: linear-gradient(to bottom, #C2BCB2 40%, rgba(255,255,255,0) 0%);
+  background-position: left;
+  background-size: 1.5px 8px;
+  background-repeat: repeat-y;
+  width: 1.5px;
+}
+
+/* Thermal Paper subtle texture */
+.paper-texture {
+  background-color: #FFFDF9;
+  box-shadow: 0 10px 30px -10px rgba(42, 40, 37, 0.12), 0 2px 6px -1px rgba(42, 40, 37, 0.06);
+}
+
+/* Long press touch callout for WeChat */
+.wechat-save-image {
+  -webkit-touch-callout: default !important;
+  user-select: auto !important;
+  -webkit-user-select: auto !important;
+  pointer-events: auto !important;
+}
+
+/* Prevent unwanted pull-to-refresh on tear card */
+.no-pull-refresh {
+  overscroll-behavior: contain;
+}

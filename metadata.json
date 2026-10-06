@@ -1,0 +1,6 @@
+{
+  "name": "Slice (生活切片) - Tactile Habit Tracker",
+  "description": "An aesthetic habit tracker where daily completed routines are minted into tactile physical paper artifacts (Convenience Store Receipt, Vintage Polaroid, Cinema Ticket Stub) to tear off and save.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
