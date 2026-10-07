@@ -8,7 +8,8 @@ import { ConfettiCanvas, ConfettiCanvasHandle } from './ConfettiCanvas';
 import { ShareModal } from './ShareModal';
 import { sound } from '../services/soundEngine';
 import { PRESET_QUOTES, PRESET_POLAROID_PHOTOS } from '../services/storage';
-import { Scissors, RefreshCw, Volume2, VolumeX, Sparkles, MoveHorizontal } from 'lucide-react';
+import { generateHabitQuote } from '../services/quoteService';
+import { Scissors, RefreshCw, Volume2, VolumeX, Sparkles, MoveHorizontal, Wand2 } from 'lucide-react';
 
 interface MintScreenProps {
   habits: HabitItem[];
@@ -28,6 +29,8 @@ export const MintScreen: React.FC<MintScreenProps> = ({
   const [template, setTemplate] = useState<TemplateType>('receipt');
   const [photoUrl, setPhotoUrl] = useState<string>(PRESET_POLAROID_PHOTOS[0]);
   const [quoteIndex, setQuoteIndex] = useState(0);
+  const [customQuote, setCustomQuote] = useState<string>('');
+  const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
   const [isMuted, setIsMuted] = useState(sound.getMuted());
 
   // Tear Physics State
@@ -64,6 +67,8 @@ export const MintScreen: React.FC<MintScreenProps> = ({
   const ticketNo = `NO. ${randomSerial}`;
   const barcodeValue = `SLICE-${dateDisplay.replace(/\./g, '')}-${randomSerial.slice(0, 4)}`;
 
+  const effectiveQuote = customQuote || PRESET_QUOTES[quoteIndex % PRESET_QUOTES.length];
+
   const currentTicket: SliceTicket = {
     id: `ticket-${Date.now()}`,
     createdAt: now.toISOString(),
@@ -77,7 +82,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
     allHabitsCount: totalHabits,
     completedCount,
     willpowerPercent,
-    quote: PRESET_QUOTES[quoteIndex % PRESET_QUOTES.length],
+    quote: effectiveQuote,
     photoUrl,
     movieTitle: '《认真生活的一天》',
     seatNumber: 'VIP-01-A',
@@ -85,19 +90,45 @@ export const MintScreen: React.FC<MintScreenProps> = ({
     ticketNo,
   };
 
-  // Dispense sound on initial mount
+  // Dispense sound and initial auto AI quote generation on mount
   useEffect(() => {
     sound.playDispenseHum();
     const timer = setTimeout(() => {
       setIsDispensing(false);
     }, 600);
+
+    // Auto-generate habit-tailored quote on mount if habits are completed
+    if (completedHabits.length > 0) {
+      generateHabitQuote(completedHabits, city, weather).then((aiQuote) => {
+        if (aiQuote) {
+          setCustomQuote(aiQuote);
+        }
+      });
+    }
+
     return () => clearTimeout(timer);
   }, []);
 
-  // Cycle quote
+  // Cycle quote manually
   const handleCycleQuote = () => {
     sound.playStepTick();
+    setCustomQuote('');
     setQuoteIndex((prev) => (prev + 1) % PRESET_QUOTES.length);
+  };
+
+  // Generate dynamic AI quote based on today's completed routines
+  const handleGenerateAiQuote = async () => {
+    sound.playStepTick();
+    setIsGeneratingQuote(true);
+    try {
+      const q = await generateHabitQuote(completedHabits, city, weather);
+      sound.playStampThud();
+      setCustomQuote(q);
+    } catch {
+      // fallback handled inside service
+    } finally {
+      setIsGeneratingQuote(false);
+    }
   };
 
   // Capture image as PNG Base64 with pixelRatio 3
@@ -202,7 +233,6 @@ export const MintScreen: React.FC<MintScreenProps> = ({
   const handlePointerUp = () => {
     if (!isDragging || isTorn) return;
     setIsDragging(false);
-    // Smooth snapback if threshold not reached
     setDragX(0);
   };
 
@@ -222,7 +252,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
       {/* Paper Confetti Engine */}
       <ConfettiCanvas ref={confettiRef} />
 
-      {/* Top Controls: Template Switcher & Sound */}
+      {/* Top Controls: Template Switcher & AI Generator */}
       <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2 z-20">
         {/* Template Segmented Control */}
         <div className="flex items-center gap-1 p-1 bg-[#ECE8DF] rounded-xl text-xs">
@@ -233,7 +263,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
                 setTemplate('receipt');
               }
             }}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
               template === 'receipt'
                 ? 'bg-[#FFFDF9] text-[#2A2825] shadow-xs'
                 : 'text-[#7A7368] hover:text-[#2A2825]'
@@ -248,7 +278,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
                 setTemplate('polaroid');
               }
             }}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
               template === 'polaroid'
                 ? 'bg-[#FFFDF9] text-[#2A2825] shadow-xs'
                 : 'text-[#7A7368] hover:text-[#2A2825]'
@@ -263,7 +293,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
                 setTemplate('ticket');
               }
             }}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
               template === 'ticket'
                 ? 'bg-[#FFFDF9] text-[#2A2825] shadow-xs'
                 : 'text-[#7A7368] hover:text-[#2A2825]'
@@ -273,18 +303,28 @@ export const MintScreen: React.FC<MintScreenProps> = ({
           </button>
         </div>
 
-        {/* Audio Mute & Quote Reroll Buttons */}
+        {/* AI Quote Generator & Audio Buttons */}
         <div className="flex items-center gap-1.5">
           <button
+            onClick={handleGenerateAiQuote}
+            disabled={isGeneratingQuote}
+            className="py-1.5 px-2.5 rounded-xl bg-[#2A2825] text-white hover:bg-[#1E1C1A] active:scale-95 transition-all text-[11px] font-medium flex items-center gap-1 cursor-pointer shadow-xs"
+            title="基于今日习惯，由 AI 生成积极治愈寄语"
+          >
+            <Sparkles size={12} className={isGeneratingQuote ? 'animate-spin text-amber-300' : 'text-amber-300'} />
+            <span className="whitespace-nowrap">{isGeneratingQuote ? '生成中...' : 'AI 灵感'}</span>
+          </button>
+
+          <button
             onClick={handleCycleQuote}
-            className="p-2 rounded-xl bg-[#ECE8DF] text-[#6E685F] hover:text-[#2A2825] active:scale-95 transition-all text-xs flex items-center gap-1"
-            title="更换切片寄语"
+            className="p-2 rounded-xl bg-[#ECE8DF] text-[#6E685F] hover:text-[#2A2825] active:scale-95 transition-all text-xs flex items-center gap-1 cursor-pointer"
+            title="切换切片语录"
           >
             <RefreshCw size={14} />
           </button>
           <button
             onClick={toggleSound}
-            className="p-2 rounded-xl bg-[#ECE8DF] text-[#6E685F] hover:text-[#2A2825] active:scale-95 transition-all"
+            className="p-2 rounded-xl bg-[#ECE8DF] text-[#6E685F] hover:text-[#2A2825] active:scale-95 transition-all cursor-pointer"
             title={isMuted ? '开启音效' : '静音'}
           >
             {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
@@ -375,7 +415,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
             {/* Quick action button for direct tear */}
             <button
               onClick={executeTear}
-              className="w-full py-3 px-4 bg-[#2A2825] text-[#FFFDF9] hover:bg-[#1C1A19] active:scale-[0.98] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-md transition-all"
+              className="w-full py-3 px-4 bg-[#2A2825] text-[#FFFDF9] hover:bg-[#1C1A19] active:scale-[0.98] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
             >
               <Scissors size={15} className="text-[#C86D51]" />
               <span>撕下切片纸品 (Tear Off & Save)</span>
@@ -385,7 +425,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
           <div className="flex flex-col gap-2">
             <button
               onClick={() => setShareModalOpen(true)}
-              className="w-full py-3 px-4 bg-[#C86D51] text-white active:scale-[0.98] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
+              className="w-full py-3 px-4 bg-[#C86D51] text-white active:scale-[0.98] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
             >
               <Sparkles size={15} />
               <span>查看长按保存蒙层 (WeChat / RED Share)</span>
@@ -397,7 +437,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({
                 setDragX(0);
                 sound.playDispenseHum();
               }}
-              className="w-full py-2.5 px-4 bg-[#ECE8DF] text-[#4A453D] hover:bg-[#E2DDD2] active:scale-[0.98] rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+              className="w-full py-2.5 px-4 bg-[#ECE8DF] text-[#4A453D] hover:bg-[#E2DDD2] active:scale-[0.98] rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
               <RefreshCw size={13} />
               <span>重新出纸并铸造 (Re-mint)</span>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HabitItem, NavigationTab, SliceTicket } from './types';
 import {
   getStoredHabits,
@@ -9,11 +9,23 @@ import {
 } from './services/storage';
 import { sound } from './services/soundEngine';
 import { detectLocationAndWeather } from './services/weatherService';
+import {
+  fetchRemoteHabits,
+  syncAllHabitsToRemote,
+  fetchRemoteTickets,
+  saveRemoteTicket,
+  deleteRemoteTicket,
+  fetchRemoteSettings,
+  saveRemoteSettings,
+  checkSupabaseHealth,
+  SupabaseHealthStatus,
+} from './services/supabase';
 import { TodayScreen } from './components/TodayScreen';
 import { MintScreen } from './components/MintScreen';
 import { GalleryScreen } from './components/GalleryScreen';
 import { CityWeatherModal } from './components/CityWeatherModal';
-import { Sparkles, Calendar, Scissors, Layers, CheckCircle2 } from 'lucide-react';
+import { SupabaseSetupModal } from './components/SupabaseSetupModal';
+import { Sparkles, Calendar, Scissors, Layers, CheckCircle2, Cloud, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('today');
@@ -23,11 +35,69 @@ export default function App() {
   const [city, setCity] = useState(settings.city || '上海');
   const [weather, setWeather] = useState(settings.weather || '21°C 晴');
   const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Silently auto-detect rough city & real-time weather from IP/TimeZone & Open-Meteo on startup
+  // Supabase Cloud Synchronization status
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [supabaseHealth, setSupabaseHealth] = useState<SupabaseHealthStatus | null>(null);
+
+  // Sync with Supabase Database
+  const syncWithSupabase = useCallback(async () => {
+    setIsCloudSyncing(true);
+    try {
+      // Check tables health first
+      const health = await checkSupabaseHealth();
+      setSupabaseHealth(health);
+
+      if (!health.allTablesReady) {
+        // Tables not ready yet, keep using local cache
+        return;
+      }
+
+      // 1. Sync habits
+      const remoteHabits = await fetchRemoteHabits();
+      if (remoteHabits && remoteHabits.length > 0) {
+        setHabits(remoteHabits);
+        saveHabits(remoteHabits);
+      } else {
+        // First-time initialization: push local habits to remote Supabase
+        const currentHabits = getStoredHabits();
+        await syncAllHabitsToRemote(currentHabits);
+      }
+
+      // 2. Sync tickets
+      const remoteTickets = await fetchRemoteTickets();
+      if (remoteTickets && remoteTickets.length > 0) {
+        setTickets(remoteTickets);
+        saveTickets(remoteTickets);
+      } else {
+        // Push local tickets if remote is empty
+        const currentTickets = getStoredTickets();
+        for (const t of currentTickets) {
+          await saveRemoteTicket(t);
+        }
+      }
+
+      // 3. Sync user settings
+      const remoteSettings = await fetchRemoteSettings();
+      if (remoteSettings) {
+        setCity(remoteSettings.city);
+        setWeather(remoteSettings.weather);
+        setSettings(remoteSettings);
+      }
+    } catch (err) {
+      console.warn('Supabase sync notice:', err);
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, []);
+
+  // On Mount: Auto-detect location/weather & sync with Supabase
   useEffect(() => {
     let isCurrent = true;
+
+    // Detect weather
     detectLocationAndWeather()
       .then((res) => {
         if (!isCurrent) return;
@@ -42,13 +112,33 @@ export default function App() {
         }
       })
       .catch(() => {
-        // fallback to default
+        // fallback
       });
+
+    // Run Supabase sync
+    syncWithSupabase();
 
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [syncWithSupabase]);
+
+  // Auto-detect when user creates tables in Supabase
+  useEffect(() => {
+    if (supabaseHealth?.allTablesReady) return;
+
+    const interval = setInterval(async () => {
+      const health = await checkSupabaseHealth();
+      if (health.allTablesReady) {
+        setSupabaseHealth(health);
+        syncWithSupabase();
+        setToastMessage('🎉 Supabase 云端数据库已成功连通并同步！');
+        setTimeout(() => setToastMessage(null), 3500);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [supabaseHealth?.allTablesReady, syncWithSupabase]);
 
   const handleUpdateCityWeather = (newCity: string, newWeather: string) => {
     setCity(newCity);
@@ -60,16 +150,22 @@ export default function App() {
     } catch {
       // ignore
     }
+
+    // Sync to Supabase
+    saveRemoteSettings(updated).catch(() => {});
+
     setToastMessage(`📍 已切换至 ${newCity} · ${newWeather}`);
     setTimeout(() => {
       setToastMessage(null);
     }, 2500);
   };
 
-  // Sync habits to localStorage
+  // Sync habits to localStorage and Supabase
   const handleUpdateHabits = (newHabits: HabitItem[]) => {
     setHabits(newHabits);
     saveHabits(newHabits);
+    // Background sync to Supabase
+    syncAllHabitsToRemote(newHabits).catch(() => {});
   };
 
   // When a ticket is minted
@@ -83,7 +179,10 @@ export default function App() {
       return updated;
     });
 
-    setToastMessage('🎉 今日切片已成功存入票夹！');
+    // Background sync to Supabase
+    saveRemoteTicket(newTicket).catch(() => {});
+
+    setToastMessage('🎉 今日切片已保存并同步至 Supabase！');
     setTimeout(() => {
       setToastMessage(null);
     }, 2800);
@@ -96,6 +195,8 @@ export default function App() {
       saveTickets(updated);
       return updated;
     });
+    // Delete from Supabase
+    deleteRemoteTicket(id).catch(() => {});
   };
 
   const switchTab = (tab: NavigationTab) => {
@@ -126,17 +227,49 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick city tag in header */}
-          <button
-            onClick={() => setIsWeatherModalOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-mono text-[#7C7569] hover:text-[#2A2825] bg-[#ECE7DC]/70 hover:bg-[#ECE7DC] px-2.5 py-1 rounded-full transition-all cursor-pointer"
-            title="点击设置城市与天气"
-          >
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>{city}</span>
-            <span>·</span>
-            <span>{weather}</span>
-          </button>
+          {/* Right Header Status: Supabase Cloud & Weather */}
+          <div className="flex items-center gap-1.5">
+            {/* Supabase Cloud Indicator */}
+            <button
+              onClick={() => {
+                sound.playStepTick();
+                setIsSupabaseModalOpen(true);
+              }}
+              title="点击查看 Supabase 数据库设置与同步状态"
+              className={`flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full transition-all cursor-pointer font-mono ${
+                supabaseHealth && !supabaseHealth.allTablesReady
+                  ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 shadow-xs'
+                  : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 shadow-xs'
+              }`}
+            >
+              {supabaseHealth && !supabaseHealth.allTablesReady ? (
+                <>
+                  <AlertCircle size={11} className="text-amber-600" />
+                  <span className="font-medium">待建表</span>
+                </>
+              ) : (
+                <>
+                  <Cloud
+                    size={11}
+                    className={isCloudSyncing ? 'animate-bounce text-emerald-600' : 'text-emerald-600'}
+                  />
+                  <span className="font-semibold">
+                    {isCloudSyncing ? '同步中' : '云端已同步'}
+                  </span>
+                </>
+              )}
+            </button>
+
+            {/* Quick city tag in header */}
+            <button
+              onClick={() => setIsWeatherModalOpen(true)}
+              className="flex items-center gap-1 text-xs font-mono text-[#7C7569] hover:text-[#2A2825] bg-[#ECE7DC]/70 hover:bg-[#ECE7DC] px-2.5 py-1 rounded-full transition-all cursor-pointer"
+              title="点击设置城市与天气"
+            >
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{city}</span>
+            </button>
+          </div>
         </header>
 
         {/* Dynamic Toast Notification */}
@@ -236,6 +369,14 @@ export default function App() {
           currentCity={city}
           currentWeather={weather}
           onUpdateCityWeather={handleUpdateCityWeather}
+        />
+
+        {/* Supabase Database Setup & Cloud Sync Modal */}
+        <SupabaseSetupModal
+          isOpen={isSupabaseModalOpen}
+          onClose={() => setIsSupabaseModalOpen(false)}
+          onSyncTrigger={syncWithSupabase}
+          isSyncing={isCloudSyncing}
         />
       </main>
     </div>
